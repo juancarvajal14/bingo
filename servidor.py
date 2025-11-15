@@ -101,8 +101,6 @@ def manejar_cliente(conn, addr):
                                     "tipo": "error",
                                     "mensaje": "¡BINGO INVÁLIDO! No tienes una columna completa."
                                 }).encode())
-                    break
-
             except socket.timeout:
                 continue
             except Exception:

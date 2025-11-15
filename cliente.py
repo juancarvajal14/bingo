@@ -12,8 +12,9 @@ class BingoCliente:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("BINGO")
-        self.root.geometry("700x800")
+        self.root.geometry("700x600")
         self.root.configure(bg="#0a0a0a")
+        self.bingo_activo = False
 
         self.socket = None
         self.carton = {}
@@ -43,7 +44,7 @@ class BingoCliente:
         tk.Label(self.root, text="B I N G O", font=("Arial Black", 22), fg="#FFD700", bg="#0a0a0a").pack(pady=15)
 
         frame = tk.Frame(self.root, bg="#1a1a2e", relief="raised", bd=5)
-        frame.pack(pady=10, padx=20)
+        frame.pack(pady=5, padx=10)
 
         for col, letra in enumerate('BINGO'):
             tk.Label(frame, text=letra, font=("Arial Black", 14), width=6, height=2,
@@ -57,7 +58,7 @@ class BingoCliente:
                 self.botones[num] = btn
 
         self.canvas = tk.Canvas(self.root, width=220, height=220, bg="#0a0a0a", highlightthickness=0)
-        self.canvas.pack(pady=25)
+        self.canvas.pack(pady=1)
 
         self.lbl_ultimo = tk.Label(self.root, text="Esperando...", font=("Arial", 14), fg="#ccc", bg="#0a0a0a")
         self.lbl_ultimo.pack(pady=5)
@@ -65,7 +66,8 @@ class BingoCliente:
         self.btn_bingo = tk.Button(self.root, text="¡B I N G O !", font=("Arial Black", 18),
                                    bg="#FFD700", fg="black", width=18, height=2,
                                    command=self.enviar_bingo, state="disabled")
-        self.btn_bingo.pack(pady=20)
+        self.btn_bingo.pack(pady=5)
+        self.bingo_activo = False
 
     def cancelar_animacion(self):
         for id in self.animacion_ids:
@@ -83,7 +85,9 @@ class BingoCliente:
 
     def animar_balota(self, letra, numero_str):
         self.cancelar_animacion()
-        self.btn_bingo.config(state="normal")
+        # ← ELIMINA ESTO:
+        # self.btn_bingo.config(state="normal")
+        
         self.lbl_ultimo.config(text=f"{letra}{numero_str}", fg="#e74c3c")
 
         for i in range(0, 360, 30):
@@ -96,24 +100,37 @@ class BingoCliente:
         if numero in self.botones:
             self.botones[numero].config(bg="#f39c12", fg="white", relief="sunken")
             self.marcados.add(numero)
+            # ← ENVÍA AL SERVIDOR
+            try:
+                self.socket.send(json.dumps({"tipo": "marcar", "numero": numero}).encode())
+            except:
+                pass
+
+        # Habilita botones de la columna
         for n in self.carton.get(letra, []):
             if n in self.botones:
                 self.botones[n].config(state="normal")
-        self.chequear_bingo()
 
-    def chequear_bingo(self):
-        tiene_bingo = any(
-            all(n in self.marcados for n in self.carton.get(letra,numero, []))
-            for letra in 'BINGO'
-        )
-        if tiene_bingo:
+        # ← LLAMA A LA FUNCIÓN CENTRAL
+        self.actualizar_estado_bingo()
+
+    def actualizar_estado_bingo(self):
+        """Habilita BINGO SOLO si TODO el cartón está completo (25 números marcados)"""
+        total_numeros_carton = 25
+        marcados_totales = len(self.marcados)
+
+        bingo_completo = (marcados_totales == total_numeros_carton)
+
+        if bingo_completo and not self.bingo_activo:
             self.btn_bingo.config(
                 bg="#27ae60", fg="white", text="¡GRITAR BINGO!", state="normal"
             )
-        else:
+            self.bingo_activo = True
+        elif not bingo_completo and self.bingo_activo:
             self.btn_bingo.config(
                 bg="#FFD700", fg="black", text="¡B I N G O !", state="disabled"
             )
+            self.bingo_activo = False
 
     def enviar_bingo(self):
         try:
@@ -131,6 +148,11 @@ class BingoCliente:
                 
                 if msg["tipo"] == "numero":
                     self.animar_balota(msg["numero"][0], msg["numero"][1:])
+                elif msg["tipo"] == "error":
+                    messagebox.showwarning("Bingo Inválido", msg["mensaje"])
+                    # ← RESTAURA BOTÓN
+                    self.btn_bingo.config(state="disabled", text="¡B I N G O !")
+                    self.bingo_activo = False
                 elif msg["tipo"] in ["ganaste", "perdiste"]:
                     messagebox.showinfo(
                         "BINGO" if msg["tipo"] == "ganaste" else "Juego Terminado",
